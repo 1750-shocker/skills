@@ -1,12 +1,12 @@
 ---
 name: pull-jira-tickets
-description: Use when the user says "拉一下jira票", "拉 Jira 票", "整理我名下 Jira", or asks to refresh assigned Jira tickets into D:\BaiduSyncdisk\笔记\公司备忘\jira tickets.md.
+description: Use when the user says "拉一下jira票", "拉 Jira 票", "整理我名下 Jira", or asks to update assigned Jira tickets into D:\BaiduSyncdisk\笔记\公司备忘\jira tickets.md without duplicating existing tickets.
 compatibility: opencode
 ---
 
 # Pull Jira Tickets
 
-当用户说“拉一下jira票”、“拉 Jira 票”、“整理我名下 Jira 票”、“刷新 jira tickets.md”或表达同等意图时，执行这个固定流程。
+当用户说“拉一下jira票”、“拉 Jira 票”、“整理我名下 Jira 票”、“更新 jira tickets.md”或表达同等意图时，执行这个固定流程。
 
 ## 固定查询
 
@@ -22,18 +22,25 @@ assignee = wangzihao AND resolution = Unresolved AND (labels is EMPTY OR labels 
 - 不要使用 `assignee = currentUser()`。
 - 不要把未分配票混入结果。
 - 默认用 `jira-tool_search_jira` 查询，`max_results` 设为 `200`。
-- 查询结果还必须按标签二次过滤：任一标签包含 `重构`、`refactor` 或 `Refactor` 的票都排除，不写入 `jira tickets.md`。
+- 查询结果还必须按标签二次过滤：任一标签包含 `重构`、`refactor` 或 `Refactor` 的票都直接忽略，不写入 `jira tickets.md`。
 - 带多个标签的票只要任一标签命中排除规则，就整票排除；不要只删除标签文本后保留票据。
 
 ## 固定输出文件
 
-把整理结果写入：
+把整理结果增量写入：
 
 ```text
 D:\BaiduSyncdisk\笔记\公司备忘\jira tickets.md
 ```
 
-如果文件存在，直接替换为本次最新整理结果。不要追加旧内容。
+如果文件不存在，创建文件并写入本次整理结果。
+
+如果文件已存在：
+- 先读取现有内容，提取已经出现过的 Jira 票号，例如 `D01-46891`、`DP-6323`、`D01HW-6900`。
+- 本次查询中票号已存在于 md 的票，直接跳过，不要重复写入。
+- 不要覆盖、清空、重排或重写已有内容。
+- 只把本次新增且未被排除的票追加到文件末尾。
+- 追加内容仍按一级标题和二级标题组织；如果新增票较少，可以只追加对应的新分组块。
 
 ## 一级标题规则
 
@@ -89,12 +96,14 @@ D:\BaiduSyncdisk\笔记\公司备忘\jira tickets.md
 
 1. 调用 `jira-tool_search_jira` 查询固定 JQL。
 2. 从返回表格中提取票号、标题、状态、标签。
-3. 先排除标签命中 `重构` / `refactor` 规则的票。
-4. 根据标题首个中文中括号生成一级标题，并应用归一化规则。
-5. 在每个一级标题下按问题相似度生成二级标题。
-6. 写入固定输出文件。
-7. 读回文件确认内容已写入。
-8. 回复用户时只说明查询数量、排除数量、写入路径和分组概况。
+3. 读取固定输出文件；如果文件存在，提取所有已出现的 Jira 票号作为去重集合。
+4. 先排除标签命中 `重构` / `refactor` 规则的票。
+5. 再排除票号已存在于 md 的票，重复票只统计跳过，不写入。
+6. 对剩余新增票，根据标题首个中文中括号生成一级标题，并应用归一化规则。
+7. 在每个一级标题下按问题相似度生成二级标题。
+8. 追加写入固定输出文件；不要覆盖已有内容。
+9. 读回文件确认新增内容已写入，且没有新增重复票号。
+10. 回复用户时只说明查询数量、重构排除数量、重复跳过数量、新增写入数量、写入路径和新增分组概况。
 
 ## 注意
 
