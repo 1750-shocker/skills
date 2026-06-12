@@ -23,12 +23,18 @@ This skill differs from `code-drawio-blueprint` which focuses on class-to-class 
 
 ## Diagram Structure Rules
 
-### 1. Main nodes = swimlane per file/class
+### 0. draw.io 兼容性规则
 
+- 生成 XML 时必须使用纯数字 `mxCell id`：`0`、`1` 为根节点，业务节点从 `2` 开始递增。
+- 不要使用语义化字符串 id（如 `svc`、`vm_livedata`、`e8`）。部分 draw.io desktop 版本打开这类文件会报 `d.setId is not a function`。
+- `source`、`target`、`parent` 也必须引用这些数字 id；需要可读性时用 XML 注释或 `value` 文本表达语义。
+- 除非确实需要容器内相对坐标，否则优先使用根节点 `parent="1"` + 绝对坐标，减少旧版本 draw.io 解析兼容风险。
+
+### 1. Main nodes = swimlane per file/class
 Each source file or class is a top-level swimlane:
 
 ```xml
-<mxCell id="svc" value="CloudMusicPlayerService.java" style="swimlane;startSize=34;html=1;rounded=1;whiteSpace=wrap;fillColor=#FFF6F5;strokeColor=#B85450;fontStyle=1;fontSize=16;" vertex="1" parent="1">
+<mxCell id="2" value="CloudMusicPlayerService.java" style="swimlane;startSize=34;html=1;rounded=1;whiteSpace=wrap;fillColor=#FFF6F5;strokeColor=#B85450;fontStyle=1;fontSize=16;" vertex="1" parent="1">
   <mxGeometry x="..." y="..." width="420" height="600" as="geometry" />
 </mxCell>
 ```
@@ -46,11 +52,11 @@ Arrows go rightward for forward calls, leftward for callbacks.
 
 ### 2. Child nodes = variables, state, key methods inside each swimlane
 
-Each child node uses `parent="swimlaneId"` with coordinates relative to the swimlane:
+Each child node uses the numeric id of its swimlane as `parent` with coordinates relative to the swimlane:
 
 ```xml
-<!-- Inside a swimlane: a variable node -->
-<mxCell id="vm_livedata" value="personalWanderLiveData&#xa;推荐页观察的 UI 数据" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=13;fontStyle=1;" vertex="1" parent="vm">
+<!-- Inside swimlane id 2: a variable node -->
+<mxCell id="3" value="personalWanderLiveData&#xa;推荐页观察的 UI 数据" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=13;fontStyle=1;" vertex="1" parent="2">
   <mxGeometry x="70" y="280" width="270" height="72" as="geometry" />
 </mxCell>
 ```
@@ -67,17 +73,17 @@ Every arrow must carry a label that describes the driving method or event:
 
 ```xml
 <!-- Solid arrow for direct call -->
-<mxCell id="e8" value="next() 调用 playNext()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#B85450;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_next" target="svc_playnext">
+<mxCell id="8" value="next() 调用 playNext()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#B85450;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="4" target="5">
   <mxGeometry relative="1" as="geometry" />
 </mxCell>
 
 <!-- Dashed arrow for callback / LiveData observation -->
-<mxCell id="e9" value="observe 回调调用 setImageView" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#6C8EBF;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="frag_observe" target="frag_ui">
+<mxCell id="9" value="observe 回调调用 setImageView" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#6C8EBF;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="6" target="7">
   <mxGeometry relative="1" as="geometry" />
 </mxCell>
 
 <!-- Thick arrow for critical fix path -->
-<mxCell id="e17" value="修复后：补齐后统一 trigger(event)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#82B366;strokeWidth=2;exitX=0;exitY=0.7;entryX=1;entryY=0.5;" edge="1" parent="1" source="svc_wander" target="event">
+<mxCell id="17" value="修复后：补齐后统一 trigger(event)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeColor=#82B366;strokeWidth=2;exitX=0;exitY=0.7;entryX=1;entryY=0.5;" edge="1" parent="1" source="10" target="11">
   <mxGeometry relative="1" as="geometry">
     <Array as="points">
       <mxPoint x="1000" y="500" />
@@ -98,7 +104,7 @@ Arrow conventions:
 Always include a legend that explains the reading rules:
 
 ```xml
-<mxCell id="legend" value="大框=文件/类  小框=关键变量/状态  箭头文字=驱动流程的方法或事件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+<mxCell id="4" value="大框=文件/类  小框=关键变量/状态  箭头文字=驱动流程的方法或事件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=15;fontStyle=1;" vertex="1" parent="1">
   <mxGeometry x="..." y="80" width="800" height="44" as="geometry" />
 </mxCell>
 ```
@@ -109,12 +115,12 @@ When explaining a bug, add two side-by-side boxes:
 
 ```xml
 <!-- Red box: old/bug behavior -->
-<mxCell id="bug" value="旧逻辑 bug 点：..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+<mxCell id="18" value="旧逻辑 bug 点：..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=15;fontStyle=1;" vertex="1" parent="1">
   <mxGeometry x="60" y="930" width="800" height="120" as="geometry" />
 </mxCell>
 
 <!-- Green box: fix behavior -->
-<mxCell id="fix" value="修复后：..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=15;fontStyle=1;" vertex="1" parent="1">
+<mxCell id="19" value="修复后：..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=15;fontStyle=1;" vertex="1" parent="1">
   <mxGeometry x="960" y="930" width="800" height="120" as="geometry" />
 </mxCell>
 ```
