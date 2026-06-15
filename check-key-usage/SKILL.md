@@ -1,6 +1,6 @@
 ---
 name: check-key-usage
-description: When the user asks to check usage/balance/spend/quota, key permissions, model accessibility, or whether OpenCode providers use the correct AI SDK/protocol/parameters. Reads ~/.config/opencode/opencode.json, queries gateway management endpoints (LiteLLM /key/info, /user/info, OpenRouter /api/v1/auth/key, etc.), and can validate configured models with protocol-specific probes plus opencode run.
+description: When the user asks to check usage/balance/spend/quota, key permissions, model accessibility, or whether configured providers use the correct protocol/parameters. Reads ~/.omp/agent/models.yml, queries gateway management endpoints (LiteLLM /key/info, /user/info, OpenRouter /api/v1/auth/key, etc.), and can validate configured models with protocol-specific probes plus runtime CLI checks.
 ---
 
 # Check Key Usage
@@ -14,37 +14,39 @@ This skill has two modes:
 
 ## Step 1: Identify ALL configured keys and models
 
-1. Read `~/.config/opencode/opencode.json`.
-2. Extract **every unique `apiKey`** from all providers in the `provider` block. For each unique key, record:
-   - `apiKey`
-   - `baseURL` (strip `/v1` suffix for management endpoints)
-   - Provider name(s) using this key
-   - `npm` AI SDK package per provider
-   - all configured model IDs and variants under that provider
-3. **Default behavior: ALWAYS query ALL unique keys**, not just the active model's key. The user has two keys configured on the same gateway and expects both to be checked every time.
-4. If user explicitly asks about only one specific key/provider, then query just that one.
+1. Read `~/.omp/agent/models.yml`.
+2. Under `providers`, inspect every provider with both `baseUrl` and `apiKey`.
+3. Resolve each provider `apiKey` using OMP's current rules:
+   - if the value names an existing environment variable, use that env var's value
+   - if the value starts with `!`, run the command and use trimmed stdout
+   - otherwise treat the value itself as the literal key
+4. For each unique resolved key, record:
+   - masked key
+   - `baseUrl` (strip `/v1` suffix for management endpoints)
+   - provider ID(s) using the key
+   - provider `api` value
+   - all configured model IDs under that provider
+5. **Default behavior: ALWAYS query ALL unique resolved keys**, not just the active model's key.
+6. If user explicitly asks about only one specific key/provider, then query just that one.
 
-Currently configured keys (as of last update):
+Typical current providers in `models.yml`:
 
-| Key | Provider IDs | Purpose |
-|---|---|---|
-| `sk-...oJzw` | gptKey_compatible, gptKey_anthropic, gptKey_responses | GPT/OpenAI-compatible models |
-| `sk-...Mfog` | claudeKey_anthropic | Claude/Anthropic models |
-
-Both keys use the same gateway: `https://cc.auto-link.com.cn/pro` (strip `/v1`).
-
+| apiKey field | Provider IDs | Base URL | Notes |
+|---|---|---|---|
+| `AL_API_KEY` | autolink | `https://cc.auto-link.com.cn/pro/v1` | resolve env var first, then query relay usage endpoints |
+| `DEEPSEEK_API_KEY` | deepseek | `https://api.deepseek.com` | direct provider; spend check is console-only unless a relay is introduced |
 If the model in use is from a native provider (Anthropic/OpenAI/Google direct), tell the user usage check has to happen on the provider's web console — no programmatic endpoint for individual key spend. Stop here.
 
 If the user asks about model accessibility or SDK correctness, do **not** stop after usage endpoints. Continue to Step 5 and Step 6.
 
 ## Step 2: Query all keys in parallel
 
-For each unique API key, fire `/key/info` and `/user/info` requests **in parallel**. Use the actual key values read from `opencode.json` in request headers, but never print them back to the user. For the two configured keys, make 4 requests:
+For each unique resolved API key, fire `/key/info` and `/user/info` requests **in parallel** when the resolved `baseUrl` is a relay that exposes them. Use the actual resolved key value in request headers, but never print it back to the user. For the current `autolink` provider, after stripping `/v1`, make these requests:
 
-1. `GET https://cc.auto-link.com.cn/pro/key/info` with `Bearer <sk-...oJzw>`
-2. `GET https://cc.auto-link.com.cn/pro/user/info` with `Bearer <sk-...oJzw>`
-3. `GET https://cc.auto-link.com.cn/pro/key/info` with `Bearer <sk-...Mfog>`
-4. `GET https://cc.auto-link.com.cn/pro/user/info` with `Bearer <sk-...Mfog>`
+1. `GET https://cc.auto-link.com.cn/pro/key/info` with `Bearer <resolved AL_API_KEY>`
+2. `GET https://cc.auto-link.com.cn/pro/user/info` with `Bearer <resolved AL_API_KEY>`
+
+If multiple relay-backed providers resolve to different keys, do the same for each unique key. For direct vendors like `https://api.deepseek.com`, skip these relay endpoints and report that spend must be checked in the vendor console.
 
 ### Gateway endpoint reference
 ```
@@ -94,21 +96,21 @@ Then add a **user-level rollup** if available (from /user/info):
 - Lifetime total spend across all keys
 - A detailed breakdown of EVERY key the user owns: Key alias, this period's spend, and remaining budget (if budget info is available in /user/info).
 
-Finally, ALWAYS include a **comparison table of all configured keys** at the end:
+Finally, ALWAYS include a **comparison table of all configured resolved keys** at the end:
 
-| | Key1 (`sk-...oJzw`) | Key2 (`sk-...Mfog`) |
+| | Key A (`sk-...xxxx`) | Key B (`sk-...yyyy`) |
 |---|---|---|
 | 别名 | (from key_alias) | (from key_alias) |
-| 用途 | Cursor | Claude Code |
+| 用途 | provider IDs / relay purpose | provider IDs / relay purpose |
 | 今日已用 | $X.XX | $X.XX |
 | 今日剩余 | $X.XX | $X.XX |
 | 累计总消费 | $X.XX | $X.XX |
 
 This comparison table is mandatory — do NOT skip it.
 
-If the user specifically asks to "查一下所有 key" or "看看其他 key", or simply says "查用量"/"查一下用" without specifying which key, check ALL configured keys (this is the default behavior).
+If the user specifically asks to "查一下所有 key" or "看看其他 key", or simply says "查用量"/"查一下用" without specifying which key, check ALL configured resolved keys (this is the default behavior).
 
-When asked to check all configured keys, extract every unique `apiKey` and its `baseURL` from the config, strip `/v1` from the URL, and query `/key/info` for each one. Present a combined table comparing them (User ID, Alias, Spend, Remaining).
+When asked to check all configured keys, extract every unique resolved `apiKey` and its `baseUrl` from `models.yml`, strip `/v1` from relay URLs, and query `/key/info` for each relay-backed key. Present a combined table comparing them (User ID, Alias, Spend, Remaining). If `models.yml` only resolves to one relay-backed key, still include the single-key comparison table and mention any direct-vendor providers separately.
 
 If router_settings / fallbacks are configured on the key, mention them — they affect what actually runs.
 
@@ -123,20 +125,21 @@ If pricing data is available (from /v1/model/info input_cost_per_token), optiona
 
 ## Step 5: Validate SDK/protocol fit when asked about model access
 
-Use the provider's `npm` package to infer the intended protocol. Do not assume every model under the same gateway uses the same endpoint.
+Use the provider's `api` field to infer the intended protocol. Do not assume every model under the same gateway uses the same endpoint.
 
-| OpenCode provider `npm` | Intended protocol | Probe endpoint | Minimal probe payload |
+| Provider `api` | Intended protocol | Probe endpoint | Minimal probe payload |
 |---|---|---|---|
-| `@ai-sdk/openai-compatible` | OpenAI-compatible chat/completions | `<baseURL>/chat/completions` | `{ "model": "...", "messages": [{ "role": "user", "content": "Reply OK only." }], "max_tokens": 16, "stream": false }` |
-| `@ai-sdk/openai` | OpenAI Responses API | `<baseURL>/responses` | `{ "model": "...", "input": [{ "role": "user", "content": "Reply OK only." }], "max_output_tokens": 16, "stream": false }` |
-| `@ai-sdk/anthropic` | Anthropic Messages API | `<baseURL>/messages` | `{ "model": "...", "max_tokens": 16, "messages": [{ "role": "user", "content": "Reply OK only." }] }` |
+| `openai-completions` | OpenAI-compatible chat/completions | `<baseURL>/chat/completions` | `{ "model": "...", "messages": [{ "role": "user", "content": "Reply OK only." }], "max_tokens": 16, "stream": false }` |
+| `openai-responses` | OpenAI Responses API | `<baseURL>/responses` | `{ "model": "...", "input": [{ "role": "user", "content": "Reply OK only." }], "max_output_tokens": 16, "stream": false }` |
+| `openai-codex-responses` | OpenAI Codex/Responses API | `<baseURL>/responses` | `{ "model": "...", "input": [{ "role": "user", "content": "Reply OK only." }], "max_output_tokens": 16, "stream": false }` |
+| `anthropic-messages` | Anthropic Messages API | `<baseURL>/messages` | `{ "model": "...", "max_tokens": 16, "messages": [{ "role": "user", "content": "Reply OK only." }] }` |
 
 Rules learned from the gateway check:
 
-- If `/chat/completions` returns fast with `Unknown items in responses API response`, the model may still be valid but belongs under a Responses-style provider (`@ai-sdk/openai`) instead of `@ai-sdk/openai-compatible`.
-- If `/responses` succeeds quickly while `/chat/completions` fails, recommend moving or duplicating that model under a Responses provider, not deleting the model.
-- If `opencode run -m provider/model` succeeds, treat the model as accessible even if the raw probe failed; the AI SDK may transform prompts differently than the manual probe.
-- If `opencode run` times out at 120 seconds, retry once with 300 seconds before declaring it unavailable. Report slow/unstable separately from unavailable.
+- If `/chat/completions` returns fast with `Unknown items in responses API response`, the model may still be valid but belongs under a responses-style `api` (`openai-responses` or `openai-codex-responses`) instead of `openai-completions`.
+- If `/responses` succeeds quickly while `/chat/completions` fails, recommend moving or duplicating that model under a responses-style provider config, not deleting the model.
+- If the runtime CLI succeeds for `provider/model`, treat the model as accessible even if the raw probe failed; the client may transform prompts differently than the manual probe.
+- If the runtime CLI times out at 120 seconds, retry once with 300 seconds before declaring it unavailable. Report slow/unstable separately from unavailable.
 - If the gateway returns `key not allowed to access model`, this is a key permission/model ID issue, not an SDK issue.
 - If the gateway returns `This model is not available in your region`, this is a provider/region restriction.
 - If the authorized models list contains a near match (for example `glm-5` but config has `glm5`), call out the exact model ID typo.
@@ -161,12 +164,13 @@ Interpret results carefully:
 
 ## Step 7: Validate request parameters and variants
 
-Check variant objects against the provider SDK style:
+Check `models.yml` compatibility settings against the provider `api` style:
 
-- OpenAI Responses/OpenAI SDK: `providerOptions.openai.reasoningEffort` is valid for reasoning models. Raw Responses API maps this to reasoning effort internally; a manual probe can also try `reasoning: { "effort": "low" }` to isolate gateway behavior.
-- OpenAI-compatible: top-level variant fields such as `reasoningEffort`, `textVerbosity`, and `reasoningSummary` are OpenCode variant fields. They may be transformed by OpenCode/AI SDK, so prefer `opencode run --variant <name>` for final validation.
-- Anthropic: `providerOptions.anthropic.effort` and `providerOptions.anthropic.thinking` are valid AI SDK provider options. `thinking.display: "summarized"` controls whether Opus 4.7 thinking summaries are shown; it is not required for model access.
-- Anthropic older/manual thinking can use `thinking: { "type": "enabled", "budgetTokens": 16000 }` in OpenCode config. The raw Anthropic HTTP API uses `budget_tokens`, but OpenCode/AI SDK config commonly uses camelCase `budgetTokens`.
+- `openai-completions`: validate `compat.maxTokensField`, `compat.supportsReasoningEffort`, `compat.reasoningEffortMap`, and `compat.extraBody` when present.
+- `openai-responses` / `openai-codex-responses`: validate the model through the runtime CLI first; if extra request shaping is needed, prefer `compat.extraBody` or provider/model headers over inventing a second config path.
+- `anthropic-messages`: `disableStrictTools: true` is often required for Anthropic-compatible relays that reject `strict`; verify tool calls against the real endpoint.
+- `authHeader: true` means the resolved key should be injected as `Authorization: Bearer <key>`; mismatches here are auth wiring bugs, not model bugs.
+- If the runtime also has per-variant reasoning knobs elsewhere, validate them with the runtime CLI after the base `models.yml` transport is confirmed.
 
 When reporting, separate these categories:
 
