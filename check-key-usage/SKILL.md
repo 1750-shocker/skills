@@ -95,6 +95,8 @@ Build a clear summary table with at minimum:
 Then add a **user-level rollup** if available (from /user/info):
 - Lifetime total spend across all keys
 - A detailed breakdown of EVERY key the user owns: Key alias, this period's spend, and remaining budget (if budget info is available in /user/info).
+- If `/user/info` returns sibling `keys`, compute a **team ranking by current-period spend** when the user asks "排第几"、"和别人比"、"团队里谁用得多" or similar.
+- Sort visible sibling keys by `spend` descending, find the current key's position, and report the current key plus a short top-of-table summary.
 
 Finally, ALWAYS include a **comparison table of all configured resolved keys** at the end:
 
@@ -111,6 +113,7 @@ This comparison table is mandatory — do NOT skip it.
 If the user specifically asks to "查一下所有 key" or "看看其他 key", or simply says "查用量"/"查一下用" without specifying which key, check ALL configured resolved keys (this is the default behavior).
 
 When asked to check all configured keys, extract every unique resolved `apiKey` and its `baseUrl` from `models.yml`, strip `/v1` from relay URLs, and query `/key/info` for each relay-backed key. Present a combined table comparing them (User ID, Alias, Spend, Remaining). If `models.yml` only resolves to one relay-backed key, still include the single-key comparison table and mention any direct-vendor providers separately.
+If the user asks for ranking, also include a compact ranking table such as `排名 / key_alias / 今日已用`, and explicitly state the current key's position among the visible sibling keys returned by `/user/info`.
 
 If router_settings / fallbacks are configured on the key, mention them — they affect what actually runs.
 
@@ -122,6 +125,7 @@ If pricing data is available (from /v1/model/info input_cost_per_token), optiona
 - If `budget_reset_at` is in the past, note the reset already happened (current `spend` may be stale).
 - If the key returned 401 on /key/info but works for /chat/completions, say so — usage endpoint not exposed.
 - If model_group/info shows `providers: []` for any authorized model, mention those are stubs.
+- If `/user/info` returns only a partial sibling-key list, say the ranking is based on the visible keys returned by the gateway, not a guaranteed global leaderboard.
 
 ## Step 5: Validate SDK/protocol fit when asked about model access
 
@@ -144,23 +148,26 @@ Rules learned from the gateway check:
 - If the gateway returns `This model is not available in your region`, this is a provider/region restriction.
 - If the authorized models list contains a near match (for example `glm-5` but config has `glm5`), call out the exact model ID typo.
 
-## Step 6: Validate model invocation through OpenCode
+## Step 6: Validate model invocation through the OMP runtime
 
-When the user asks "是否都可访问" or "SDK/参数是否正确", verify selected or all configured models through OpenCode itself:
+When the user asks "是否都可访问" or "SDK/参数是否正确", verify selected or all configured models through OMP itself:
 
 ```bash
-opencode run "Reply with exactly: OK" -m "provider/model" --variant high
+omp -p --no-session --no-tools --model provider/model "Reply with exactly: OK"
 ```
 
-Use `--variant` only when checking variant parameters. Otherwise omit it to test the base model first.
+Use the exact `provider/model` form when validating configured entries from `models.yml`. For multiple models under one provider, run them one by one and summarize the result set.
 
 Interpret results carefully:
 
 - `OK` or exit code 0 with sensible output: accessible.
 - Exit code 0 with empty output: reachable, but output/parsing may be suspicious; mark as "needs manual confirmation".
 - HTTP 401/403 with key/model message: key permission problem.
+- HTTP 400 with `Invalid model name passed in model=...`: treat as **model ID typo, stale configured model, or gateway/model-registry mismatch**.
 - HTTP 500 with LiteLLM fallback/model-group text: usually gateway routing/protocol/model-group mismatch.
-- Timeout: retry with a longer timeout and then label as slow/unstable, not immediately unavailable.
+- Timeout: retry once with a longer timeout and then label as slow/unstable, not immediately unavailable.
+
+When one configured model fails but siblings under the same provider succeed, call out that the transport/auth path is working and the failure is model-specific rather than a general provider outage.
 
 ## Step 7: Validate request parameters and variants
 
