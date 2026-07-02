@@ -46,18 +46,47 @@ For each unique resolved API key, fire `/key/info` and `/user/info` requests **i
 1. `GET https://cc.auto-link.com.cn/pro/key/info` with `Bearer <resolved AL_API_KEY>`
 2. `GET https://cc.auto-link.com.cn/pro/user/info` with `Bearer <resolved AL_API_KEY>`
 
-If multiple relay-backed providers resolve to different keys, do the same for each unique key. For direct vendors like `https://api.deepseek.com`, skip these relay endpoints and report that spend must be checked in the vendor console.
+If multiple relay-backed providers resolve to different keys, do the same for each unique key. For direct vendors like `https://api.deepseek.com`, skip these relay endpoints and do not attempt balance/usage lookup unless the user explicitly asks about that vendor; optionally mention that direct-vendor spend is console-only.
 
 ### Gateway endpoint reference
 ```
 GET <baseURL>/key/info          → key metadata, alias, budget, spend, models
 GET <baseURL>/user/info         → total user spend across all keys, list of sibling keys
+GET <baseURL>/team/info         → team metadata; when `team_id` is provided, may also include team `keys`
 GET <baseURL>/v1/model/info     → per-model cost & routing
 GET <baseURL>/global/spend/logs → admin-only, usually 401
 ```
 Note: baseURL might end with `/v1`. The management endpoints sit at the root, not under `/v1`. So if `baseURL = https://x.com/pro/v1`, try `https://x.com/pro/key/info` (strip `/v1`).
 
 All require `Authorization: Bearer <key>`.
+
+### Team ranking on LiteLLM-style relays
+
+When the user asks "排第几"、"团队里谁用得多"、"团队排名" or similar, do **not** stop at `/user/info`.
+
+1. First query `/user/info` and collect `teams[].team_id`.
+2. For each visible `team_id`, query `GET <baseURL>/team/info?team_id=<team_id>`.
+3. If the response contains a `keys` array, treat that as the best available **team key leaderboard** and sort by `spend` descending.
+4. Find the current key by matching `key_alias` from `/key/info`, and report its position as `第 N / 总数`.
+5. Report the team alias, team total spend (`team_info.spend`), current key rank, and a compact top table.
+6. If `team_member_info` is empty or missing, say clearly that the ranking is by visible team keys, not by aggregated user objects.
+
+For the current AutoLink relay, this is the successful ranking path:
+
+1. `GET https://cc.auto-link.com.cn/pro/user/info`
+2. Read `teams[0].team_id`
+3. `GET https://cc.auto-link.com.cn/pro/team/info?team_id=<team_id>`
+4. Sort returned `keys` by `spend`
+
+Observed permission behavior on this relay:
+
+- `/team/info` without `team_id` returns `422` malformed request.
+- `/team/info?team_id=...` can succeed for ordinary internal-user keys and return the team's key list.
+- `/team/list` usually requires admin and returns `401` or `403` for ordinary users.
+- `/user/list` usually requires proxy admin or org admin.
+- `/global/spend` and `/global/spend/logs` remain admin-only.
+
+If `/team/info` succeeds and includes `keys`, prefer that ranking over `/user/info` sibling keys. If `/team/info` fails or does not include `keys`, fall back to `/user/info` sibling-key ranking and say the scope is narrower.
 
 ### OpenRouter
 ```
@@ -95,8 +124,9 @@ Build a clear summary table with at minimum:
 Then add a **user-level rollup** if available (from /user/info):
 - Lifetime total spend across all keys
 - A detailed breakdown of EVERY key the user owns: Key alias, this period's spend, and remaining budget (if budget info is available in /user/info).
-- If `/user/info` returns sibling `keys`, compute a **team ranking by current-period spend** when the user asks "排第几"、"和别人比"、"团队里谁用得多" or similar.
-- Sort visible sibling keys by `spend` descending, find the current key's position, and report the current key plus a short top-of-table summary.
+- If `/team/info?team_id=...` succeeds and returns team `keys`, compute a **team key ranking by current-period spend** from that list; this is preferred over `/user/info` sibling-key ranking.
+- Otherwise, if `/user/info` returns sibling `keys`, compute a narrower visible-sibling ranking by current-period spend.
+- In both cases, sort the visible list by `spend` descending, find the current key's position, and report the current key plus a short top-of-table summary.
 
 Finally, ALWAYS include a **comparison table of all configured resolved keys** at the end:
 
@@ -113,7 +143,7 @@ This comparison table is mandatory — do NOT skip it.
 If the user specifically asks to "查一下所有 key" or "看看其他 key", or simply says "查用量"/"查一下用" without specifying which key, check ALL configured resolved keys (this is the default behavior).
 
 When asked to check all configured keys, extract every unique resolved `apiKey` and its `baseUrl` from `models.yml`, strip `/v1` from relay URLs, and query `/key/info` for each relay-backed key. Present a combined table comparing them (User ID, Alias, Spend, Remaining). If `models.yml` only resolves to one relay-backed key, still include the single-key comparison table and mention any direct-vendor providers separately.
-If the user asks for ranking, also include a compact ranking table such as `排名 / key_alias / 今日已用`, and explicitly state the current key's position among the visible sibling keys returned by `/user/info`.
+If the user asks for ranking, also include a compact ranking table such as `排名 / key_alias / 今日已用`, and explicitly state whether the current key's position comes from visible team `keys` (`/team/info`) or only visible sibling keys (`/user/info`).
 
 If router_settings / fallbacks are configured on the key, mention them — they affect what actually runs.
 
@@ -125,7 +155,8 @@ If pricing data is available (from /v1/model/info input_cost_per_token), optiona
 - If `budget_reset_at` is in the past, note the reset already happened (current `spend` may be stale).
 - If the key returned 401 on /key/info but works for /chat/completions, say so — usage endpoint not exposed.
 - If model_group/info shows `providers: []` for any authorized model, mention those are stubs.
-- If `/user/info` returns only a partial sibling-key list, say the ranking is based on the visible keys returned by the gateway, not a guaranteed global leaderboard.
+- If `/team/info` returns team `keys`, state that the ranking is team-key scoped and stronger than `/user/info` sibling-key scope.
+- If `/team/info` fails or omits `keys` and `/user/info` returns only a partial sibling-key list, say the ranking is based on the visible keys returned by the gateway, not a guaranteed global leaderboard.
 
 ## Step 5: Validate SDK/protocol fit when asked about model access
 
