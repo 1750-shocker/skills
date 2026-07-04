@@ -23,6 +23,7 @@ Save text to the private cloud Notebox through the PowerShell script in this ski
 - Use source `omp` unless the user specifies another source.
 - Use tags only when obvious, such as `ai`, `log`, `code`, `summary`, or `clipboard`.
 - Call the bundled PowerShell script at `scripts/save-note.ps1` relative to this skill directory.
+- For Chinese, long, or quote-heavy content, write the body to a temporary UTF-8 file and call `scripts/save-note.ps1 -ContentFile <path>`; do not splice the body directly into a command-line argument.
 - Never print, persist, or request `NOTEBOX_TOKEN`.
 - Never call the Notebox HTTP API directly from this skill; the script owns transport and credentials.
 - If saving the current conversation, summarize only when the user asks for a summary; otherwise save the requested text verbatim.
@@ -30,10 +31,12 @@ Save text to the private cloud Notebox through the PowerShell script in this ski
 
 ## Commands
 
-Save explicit content:
+Save explicit content. Prefer `-ContentFile` for non-ASCII, long, or quote-heavy text:
 
 ```powershell
-& "$PSScriptRoot\scripts\save-note.ps1" -Title "<title>" -Content "<content>" -Source "omp" -Tags "ai"
+$contentPath = Join-Path $env:TEMP "notebox-content.txt"
+[System.IO.File]::WriteAllText($contentPath, "<content>", [System.Text.Encoding]::UTF8)
+& "$PSScriptRoot\scripts\save-note.ps1" -Title "<title>" -ContentFile $contentPath -Source "omp" -Tags "ai"
 ```
 
 Save clipboard:
@@ -42,7 +45,7 @@ Save clipboard:
 Get-Clipboard | & "$PSScriptRoot\scripts\save-note.ps1" -Title "<title>" -Source "clipboard" -Tags "clipboard"
 ```
 
-For long or quote-heavy content, write through a PowerShell variable or pipeline instead of exposing secrets or fighting shell quoting. The bundled script reads `NOTEBOX_URL` and `NOTEBOX_TOKEN` from the local environment.
+For short ASCII content, `-Content` is acceptable. For Chinese, long, multiline, or quote-heavy content, always use a temporary UTF-8 file with `-ContentFile`. The bundled script sets UTF-8 console encodings and reads `NOTEBOX_URL` and `NOTEBOX_TOKEN` from the local environment.
 
 ## Updating URL or Token
 
