@@ -22,6 +22,13 @@ end {
   $token = $env:NOTEBOX_TOKEN
 
   if ([string]::IsNullOrWhiteSpace($url)) {
+    $url = [Environment]::GetEnvironmentVariable('NOTEBOX_URL', 'User')
+  }
+  if ([string]::IsNullOrWhiteSpace($token)) {
+    $token = [Environment]::GetEnvironmentVariable('NOTEBOX_TOKEN', 'User')
+  }
+
+  if ([string]::IsNullOrWhiteSpace($url)) {
     throw "NOTEBOX_URL is not set"
   }
   if ([string]::IsNullOrWhiteSpace($token)) {
