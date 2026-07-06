@@ -39,6 +39,13 @@ $contentPath = Join-Path $env:TEMP "notebox-content.txt"
 & "$PSScriptRoot\scripts\save-note.ps1" -Title "<title>" -ContentFile $contentPath -Source "omp" -Tags "ai"
 ```
 
+For Chinese or other non-ASCII content, prefer writing UTF-8 text to a temp file and passing it with `-Content` after explicit UTF-8 read. Avoid relying on bash -> PowerShell pipeline binding for rich text; it can produce empty content or mojibake in mixed shells.
+
+```powershell
+$content = [System.IO.File]::ReadAllText("C:\Users\Lenovo\AppData\Local\Temp\note.txt", [System.Text.Encoding]::UTF8)
+& "$PSScriptRoot\scripts\save-note.ps1" -Content $content -Title "<title>" -Source "omp" -Tags "life"
+```
+
 Save clipboard:
 
 ```powershell
