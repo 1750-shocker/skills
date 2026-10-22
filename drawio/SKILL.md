@@ -133,7 +133,7 @@ When explaining a bug, add two side-by-side boxes:
 4. Trace the method call chain and identify data flow direction.
 5. Propose a layout: classes left to right, variables inside, method-labeled arrows connecting them.
 6. Generate a concise text blueprint internally or in the progress update, but do not ask for confirmation.
-7. Generate `.drawio` directly.
+7. Generate `.drawio` directly into `C:\Users\Lenovo\Desktop` unless the user specified another directory for this request.
 8. Do not export PNG unless the user explicitly asks for PNG.
 
 ## Blueprint Format
@@ -174,13 +174,16 @@ Before generating XML, optionally show a concise text blueprint as progress, but
 
 ## File Path
 
-- Default output dir: current working directory, or user-specified path
-- Filename: use descriptive Chinese or English name ending in `.drawio`
-- Export PNG only when explicitly requested: `draw.io -x -f png -e -s 2 -b 20 -o output.drawio.png input.drawio`
+- 默认保存到 Windows 桌面：`C:\Users\Lenovo\Desktop`。用户未指定路径时直接写到这里，不要询问。
+- 用户当次指定了别的目录时，只用该次指定目录，不要改回桌面，也不要写进仓库。
+- 文件名用描述性中文或英文，以 `.drawio` 结尾。Excalidraw 图同样放桌面，扩展名用 `.excalidraw`。
+- 不要把图写到当前代码仓库，除非用户明确要求。
+
 
 ## Interaction Rules
 
-- **用户必须指定文件保存路径**，否则在一句内询问："请提供保存路径（如 D:\项目笔记\D01）"
+- 未指定路径时保存到 `C:\Users\Lenovo\Desktop`，不要停下来询问。
+
 - Read source files before proposing the blueprint.
 - Do not ask for blueprint confirmation; generate the `.drawio` directly after reading source files.
 - Keep the first version focused; prefer 5-8 main nodes over an unreadable 20-node diagram.
@@ -313,7 +316,8 @@ Before generating XML, optionally show a concise text blueprint as progress, but
 
 ### 工作流程
 
-1. **检查路径** — 用户必须指定保存路径，否则询问后停止
+1. **确定路径** — 用户指定了目录就用指定目录；未指定则保存到 `C:\Users\Lenovo\Desktop`，不要询问
+
 2. **读取源码** — 先读取相关文件，确认类名、方法名、行号
 3. **提取链路** — 按真实调用顺序提取每个步骤的：文件路径、方法名、行号、关键代码；不得跳过中间 Router/Manager/Service/Callback 层
 4. **链路自检** — 检查每条边是否能在源码里找到直接调用或明确回调关系；发现跳步必须补节点后再生成图
@@ -342,6 +346,6 @@ Before generating XML, optionally show a concise text blueprint as progress, but
 
 ### 文件输出
 
-- **用户必须指定保存路径**，未指定则询问："请提供保存路径（如 D:\项目笔记\D01）"
+- 未指定路径时保存到 `C:\Users\Lenovo\Desktop`，不要询问
 - 文件名：描述性中英文名 + `.drawio`
 - PNG：默认不导出；只有用户明确要求 PNG 时才执行 draw.io CLI 导出命令
