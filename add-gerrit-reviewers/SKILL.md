@@ -45,13 +45,13 @@ owner:self status:open -is:wip
 
 如果 CL 已有任意人工 Reviewer，默认整条跳过，不补齐四人。只有用户明确要求“补齐默认 reviewer”时，才为已有人工 Reviewer 的 CL 添加缺少的默认审核人。
 
-## FL1 分支额外审核人
+## D01 项目额外审核人
 
-当目标 CL 的分支名包含 `FL1`（如 `al_chery-d01_sop_FL1`、`al_chery-d01_FL1_int`）时，在四名默认审核人之外额外添加：
+当目标 CL 的分支名包含 `d01`（如 `al_chery-d01_sop_FL1`、`al_chery-d01_dev2`、`al_chery-d01_release`）时，在四名默认审核人之外额外添加：
 
 - `konglihan`
 
-非 FL1 分支不添加 konglihan。
+非 D01 分支不添加 konglihan。
 
 ## KP31 项目额外审核人
 
@@ -59,14 +59,14 @@ owner:self status:open -is:wip
 
 - `zengjie`
 
-非 KP31 分支不添加 zengjie。FL1 与 KP31 可叠加：分支同时命中则两人都加。
+非 KP31 分支不添加 zengjie。D01 与 KP31 可叠加：分支同时命中则两人都加。
 
 ## 执行步骤
 
 1. 使用 `query_changes` 查询 `owner:self status:open -is:wip`，上限设为 `100`。
 2. 逐个获取 CL 详情（`change/detail?o=DETAILED_LABELS`），检查分支名、`Verified` 标签和 Reviewer 列表。注意：批量查询可能丢失 labels/username 字段，以逐条 detail 为准。
 3. 排除 WIP、非 Open、非本人提交、CA 未绿（Verified 无机器人 +1）以及已有人工 Reviewer 的 CL。
-4. 对每个剩余 CL，添加四名默认 Reviewer（`state=REVIEWER`）；分支名含 `FL1` 的额外添加 `konglihan`；分支名含 `kp31`（不区分大小写）的额外添加 `zengjie`。
+4. 对每个剩余 CL，添加四名默认 Reviewer（`state=REVIEWER`）；分支名含 `d01` 的额外添加 `konglihan`；分支名含 `kp31`（不区分大小写）的额外添加 `zengjie`。
 5. 添加后重新获取每个目标 CL 的 Reviewer 列表，确认所有目标 reviewer 均已存在。
 6. 回复时说明：查询到的非 WIP 开放 CL 数、CA 未绿跳过数、因已有人工 Reviewer 跳过数、实际处理 CL 数、成功添加次数、失败项。
 
